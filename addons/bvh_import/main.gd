@@ -134,12 +134,6 @@ func _make_animation(file:String):
 	var config = get_config_data()
 	var animation = load_bvh_filename(file)
 	
-	# Attach to the animation player.
-	#var editor_selection = editor_interface.get_selection()
-	#var selected_nodes = editor_selection.get_selected_nodes()
-	#if len(selected_nodes) == 0:
-	#	printerr("No nodes selected.  Please select the target animation player.")
-	#	return
 	var animation_player:AnimationPlayer = editor_interface.get_edited_scene_root().get_node(config[ANIM_PLAYER_NAME])
 	if animation_player == null:
 		printerr("AnimationPlayer is null.  Please ensure that the animation player to which you'd like to add is selected.")
@@ -222,6 +216,7 @@ func parse_hierarchy(text:Array):# -> [String, Array, Dictionary, Dictionary]:
 		line = line.strip_edges()
 		if line.begins_with("ROOT"):
 			current_bone = line.split(" ", false)[1]
+			current_bone = current_bone.replace(".", "")
 			bone_names.append(current_bone)
 			bone_index_map[current_bone] = [-1, -1, -1, -1, -1, -1] # -1 means not in collection.
 			bone_offsets[current_bone] = [0, 0, 0]
@@ -235,7 +230,8 @@ func parse_hierarchy(text:Array):# -> [String, Array, Dictionary, Dictionary]:
 				data_index += 1
 				#print("Channel: ", chan, " -> Idx: ", data_index)
 		elif line.begins_with("JOINT"):
-			current_bone = line.split(" ", false)[1]
+			current_bone = line.split(" ", false)[1]			
+			current_bone = current_bone.replace(".", "")
 			bone_names.append(current_bone)
 			bone_index_map[current_bone] = [-1, -1, -1, -1, -1, -1] # -1 means not in collection.
 		elif line.begins_with("OFFSET"):
@@ -248,17 +244,10 @@ func parse_hierarchy(text:Array):# -> [String, Array, Dictionary, Dictionary]:
 func parse_motion(root:String, bone_names:Array, bone_index_map:Dictionary, bone_offsets:Dictionary, text:Array) -> Animation:
 	var config = get_config_data()
 		
-	# Precompute our axises.
-	# -Z forward, +Y up, +x right
-	var up_axis:Vector3 = AXIS_OPTION_VECTORS[config[UP_VECTOR]] # Locally, +Y
-	var forward_axis:Vector3 = AXIS_OPTION_VECTORS[config[FORWARD_VECTOR]]
-	var right_axis:Vector3 = up_axis.cross(forward_axis) # Locally +X
-	var animation_basis:Basis = Basis(right_axis, up_axis, forward_axis)
-	
 	var rig_name = config[RIG_NAME]
 	
 	var num_frames = 0
-	var timestep = 1.0/60.0
+	var timestep = 0.033333
 	var read_header = true
 	while read_header:
 		read_header = false
@@ -279,6 +268,8 @@ func parse_motion(root:String, bone_names:Array, bone_index_map:Dictionary, bone
 	for i in range(len(bone_names)):
 		var track_index = animation.add_track(Animation.TYPE_TRANSFORM)
 		element_track_index_map[i] = track_index
+	
+	animation.length = num_frames * timestep
 	
 	var step:int = 0
 	for line in text:
@@ -302,18 +293,12 @@ func parse_motion(root:String, bone_names:Array, bone_index_map:Dictionary, bone
 				translation.y = values[transformYIndex]
 			if transformZIndex != -1:
 				translation.z = values[transformZIndex]
-			translation = animation_basis.xform_inv(translation)
 			
 			print(step, " ", bone_name)
 			var raw_rotation_values:Vector3 = Vector3(0, 0, 0)
-			# NOTE: Not actually anything like axis-angle, just a convenient placeholder for a triple.
-			if rotationXIndex != -1:
-				raw_rotation_values.x = values[rotationXIndex]
-			if rotationYIndex != -1:
-				raw_rotation_values.y = values[rotationYIndex]
-			if rotationZIndex != -1:
-				raw_rotation_values.z = values[rotationZIndex]
-			print("Starting Z rotation: ", raw_rotation_values.z)
+			raw_rotation_values.x = values[rotationXIndex]
+			raw_rotation_values.y = values[rotationYIndex]
+			raw_rotation_values.z = values[rotationZIndex]
 			
 			# Godot uses Right +X, Up +Y, Forward -Z
 			var rotation:Basis = Basis()
@@ -322,8 +307,6 @@ func parse_motion(root:String, bone_names:Array, bone_index_map:Dictionary, bone
 			if rotationXIndex != -1 and rotationYIndex != -1 and rotationZIndex != -1:
 				var ordering:String = ""
 				if config[AXIS_ORDER] == AXIS_ORDERING.NATIVE:
-					# This is a bit messy.  'Native' rotation order means we apply the rotation in the order we read it.
-					# That means picking the minimum index of XYZ and applying it, then the next index, etc.
 					if rotationXIndex < rotationYIndex and rotationXIndex < rotationZIndex:
 						ordering += "X"
 						if rotationYIndex < rotationZIndex:
@@ -344,30 +327,19 @@ func parse_motion(root:String, bone_names:Array, bone_index_map:Dictionary, bone
 							ordering += "YX"
 				else:
 					ordering = AXIS_ORDERING_NAMES[config[AXIS_ORDER]]
-				# Potentially flip order.
-				if config[REVERSE_AXIS_ORDER]:
-					var new_order:String = ""
-					for axis in ordering:
-						new_order = axis + new_order
-					print("Old order: ", ordering, ". New order: ", new_order)
-					ordering = new_order
-				# Apply the rotations in the right order.
+				rotation.transposed()
 				for axis in ordering:
 					rotation = _apply_rotation(rotation, raw_rotation_values.x, raw_rotation_values.y, raw_rotation_values.z, axis)
-			rotation = rotation * animation_basis.inverse()
 			
-			#metarig:spine.006
-			#animation.track_set_path(track_index, "Enemy:position.x")
-			#animation.track_insert_key(track_index, step*timestep, values[i])
 			animation.track_set_path(track_index, rig_name + ":" + bone_name)
-			animation.transform_track_insert_key(track_index, step*timestep, translation, rotation.get_rotation_quat(), Vector3(1, 1, 1))
+			animation.transform_track_insert_key(track_index, step*timestep, translation, rotation, Vector3(1, 1, 1))
 			var quat = rotation.get_rotation_quat()
 			print(bone_name, " ", translation.x, " ", translation.y, " ", translation.z, " ", quat.x, " ", quat.y, " ", quat.z, " ", quat.w)
 		step += 1
 	
 	return animation
 
-func _apply_rotation(rotation:Basis, x:float, y:float, z:float, axis:String) -> Basis:
+func _apply_rotation(rotation:Basis, x:float, y:float, z:float, axis:String) -> Quat:
 	var config = get_config_data()
 	
 	# Godot: +X right, -Z forward, +Y up.
@@ -375,10 +347,10 @@ func _apply_rotation(rotation:Basis, x:float, y:float, z:float, axis:String) -> 
 	var forward_axis:Vector3 = AXIS_OPTION_VECTORS[config[FORWARD_VECTOR]]
 	var right_axis:Vector3 = up_axis.cross(forward_axis)
 	
-	if x != 0.0 and axis == "X":
+	if axis == "X":
 		rotation = rotation.rotated(right_axis, deg2rad(x))
-	elif y != 0.0 and axis == "Y":
+	elif axis == "Y":
 		rotation = rotation.rotated(up_axis, deg2rad(y))
-	elif z != 0.0 and axis == "Z":
+	elif axis == "Z":
 		rotation = rotation.rotated(forward_axis, deg2rad(z))
-	return rotation.orthonormalized()
+	return rotation.get_rotation_quat()
