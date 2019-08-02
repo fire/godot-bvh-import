@@ -286,22 +286,21 @@ func parse_motion(root:String, bone_names:Array, bone_index_map:Dictionary, bone
 			var rotationYIndex = bone_index_map[bone_name][channel_index_map[YROT]]
 			var rotationZIndex = bone_index_map[bone_name][channel_index_map[ZROT]]
 			
-			var translation = Vector3()
+			var translation = -Vector3(bone_offsets[bone_name][0], bone_offsets[bone_name][1], bone_offsets[bone_name][2])
 			if transformXIndex != -1:
-				translation.x = values[transformXIndex]
+				translation.x += values[transformXIndex]
 			if transformYIndex != -1:
-				translation.y = values[transformYIndex]
+				translation.y += values[transformYIndex]
 			if transformZIndex != -1:
 				translation.z = values[transformZIndex]
 			
-			print(step, " ", bone_name)
 			var raw_rotation_values:Vector3 = Vector3(0, 0, 0)
 			raw_rotation_values.x = values[rotationXIndex]
 			raw_rotation_values.y = values[rotationYIndex]
 			raw_rotation_values.z = values[rotationZIndex]
 			
 			# Godot uses Right +X, Up +Y, Forward -Z
-			var rotation:Basis = Basis()
+			var rotation:Quat = Quat.IDENTITY
 			
 			# Apply joint rotations.
 			if rotationXIndex != -1 and rotationYIndex != -1 and rotationZIndex != -1:
@@ -345,7 +344,7 @@ func _apply_rotation(rotation:Basis, x:float, y:float, z:float, axis:String) -> 
 	# Godot: +X right, -Z forward, +Y up.
 	var up_axis:Vector3 = AXIS_OPTION_VECTORS[config[UP_VECTOR]]
 	var forward_axis:Vector3 = AXIS_OPTION_VECTORS[config[FORWARD_VECTOR]]
-	var right_axis:Vector3 = up_axis.cross(forward_axis)
+	var right_axis:Vector3 = forward_axis.cross(up_axis)
 	
 	if axis == "X":
 		rotation = rotation.rotated(right_axis, deg2rad(x))
