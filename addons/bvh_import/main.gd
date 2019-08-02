@@ -300,35 +300,34 @@ func parse_motion(root:String, bone_names:Array, bone_index_map:Dictionary, bone
 			raw_rotation_values.z = values[rotationZIndex]
 			
 			# Godot uses Right +X, Up +Y, Forward -Z
-			var rotation:Quat = Quat.IDENTITY
+			var rotation : Basis
 			
 			# Apply joint rotations.
-			if rotationXIndex != -1 and rotationYIndex != -1 and rotationZIndex != -1:
-				var ordering:String = ""
-				if config[AXIS_ORDER] == AXIS_ORDERING.NATIVE:
-					if rotationXIndex < rotationYIndex and rotationXIndex < rotationZIndex:
-						ordering += "X"
-						if rotationYIndex < rotationZIndex:
-							ordering += "YZ"
-						else:
-							ordering += "ZY"
-					elif rotationYIndex < rotationXIndex and rotationYIndex < rotationZIndex:
-						ordering += "Y"
-						if rotationXIndex < rotationZIndex:
-							ordering += "XZ"
-						else:
-							ordering += "ZX"
-					else: # Z is first.
-						ordering += "Z"
-						if rotationXIndex < rotationYIndex:
-							ordering += "XY"
-						else:
-							ordering += "YX"
-				else:
-					ordering = AXIS_ORDERING_NAMES[config[AXIS_ORDER]]
-				rotation.transposed()
-				for axis in ordering:
-					rotation = _apply_rotation(rotation, raw_rotation_values.x, raw_rotation_values.y, raw_rotation_values.z, axis)
+			var ordering:String = ""
+			if config[AXIS_ORDER] == AXIS_ORDERING.NATIVE:
+				if rotationXIndex < rotationYIndex and rotationXIndex < rotationZIndex:
+					ordering += "X"
+					if rotationYIndex < rotationZIndex:
+						ordering += "YZ"
+					else:
+						ordering += "ZY"
+				elif rotationYIndex < rotationXIndex and rotationYIndex < rotationZIndex:
+					ordering += "Y"
+					if rotationXIndex < rotationZIndex:
+						ordering += "XZ"
+					else:
+						ordering += "ZX"
+				else: # Z is first.
+					ordering += "Z"
+					if rotationXIndex < rotationYIndex:
+						ordering += "XY"
+					else:
+						ordering += "YX"
+			else:
+				ordering = AXIS_ORDERING_NAMES[config[AXIS_ORDER]]
+			rotation.transposed()
+			for axis in ordering:
+				rotation = _apply_rotation(rotation, raw_rotation_values.x, raw_rotation_values.y, raw_rotation_values.z, axis)
 			
 			animation.track_set_path(track_index, rig_name + ":" + bone_name)
 			animation.transform_track_insert_key(track_index, step*timestep, translation, rotation, Vector3(1, 1, 1))
